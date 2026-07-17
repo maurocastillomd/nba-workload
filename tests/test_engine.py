@@ -61,20 +61,77 @@ def test_chronic_28d_is_daily_mean_of_minutes():
     assert row["chronic_daily"] == pytest.approx(10 * 28 / 28)
 
 
-def test_acwr_is_acute_daily_over_chronic_daily():
-    games = steady_player()
+def test_week_over_week_big_jump_scores_two_points():
+    # three steady 60-minute weeks, then a 140-minute week (+133%)
+    rows = [(1, "A", "ORL", d, 20) for d in [
+        "2026-01-05", "2026-01-07", "2026-01-09",
+        "2026-01-12", "2026-01-14", "2026-01-16",
+        "2026-01-19", "2026-01-21", "2026-01-23",
+    ]]
+    rows += [(1, "A", "ORL", d, 35) for d in
+             ["2026-01-26", "2026-01-28", "2026-01-30", "2026-02-01"]]
+    games = make_games(rows)
     daily = compute_daily_metrics(games)
-    last_date = games["game_date"].max()
-    row = get_day(daily, 1, last_date)
-    expected = (row["acute_7d"] / 7) / row["chronic_daily"]
-    assert row["acwr"] == pytest.approx(expected)
+    row = get_day(daily, 1, "2026-02-01")
+    assert row["ramp_pct"] == pytest.approx((140 - 60) / 60)
+    assert "vs prior week" in row["reasons"]
+    assert row["state"] == "RED"
 
 
-def test_acwr_not_rated_below_chronic_floor():
-    # a single early game: chronic is tiny, ACWR would be garbage
-    games = make_games([(1, "A", "ORL", "2026-01-01", 6)])
+def test_week_over_week_moderate_jump_scores_one_point():
+    # 90-minute week to 140 minutes (+56%): ramp +1, 4 games in 7 +1 -> AMBER
+    rows = [(1, "A", "ORL", d, 30) for d in [
+        "2026-01-05", "2026-01-07", "2026-01-09",
+        "2026-01-12", "2026-01-14", "2026-01-16",
+        "2026-01-19", "2026-01-21", "2026-01-23",
+    ]]
+    rows += [(1, "A", "ORL", d, 35) for d in
+             ["2026-01-26", "2026-01-28", "2026-01-30", "2026-02-01"]]
+    games = make_games(rows)
     daily = compute_daily_metrics(games)
-    assert pd.isna(get_day(daily, 1, "2026-01-01")["acwr"])
+    row = get_day(daily, 1, "2026-02-01")
+    assert row["ramp_pct"] == pytest.approx((140 - 90) / 90)
+    assert "vs prior week" in row["reasons"]
+    assert row["risk_points"] == 2
+    assert row["state"] == "AMBER"
+
+
+def test_one_extra_game_week_is_not_a_ramp():
+    # 3 games then 4 games at identical minutes (+33%, +28 min): calendar
+    # oscillation, not a workload decision
+    rows = [(1, "A", "ORL", d, 28) for d in [
+        "2026-01-12", "2026-01-14", "2026-01-16",
+        "2026-01-19", "2026-01-21", "2026-01-23", "2026-01-25",
+    ]]
+    games = make_games(rows)
+    daily = compute_daily_metrics(games)
+    assert "vs prior week" not in get_day(daily, 1, "2026-01-25")["reasons"]
+
+
+def test_ramp_ignored_at_low_volumes():
+    # 20 -> 50 minutes is +150% but trivial exposure; no ramp flag
+    games = make_games([
+        (1, "A", "ORL", "2026-01-19", 20),
+        (1, "A", "ORL", "2026-01-26", 25),
+        (1, "A", "ORL", "2026-01-28", 25),
+    ])
+    daily = compute_daily_metrics(games)
+    reasons = get_day(daily, 1, "2026-01-28")["reasons"]
+    assert "vs prior week" not in reasons
+    assert "surge" not in reasons
+
+
+def test_surge_after_quiet_week_is_flagged():
+    # an established player misses a week, then plays 120 min in 6 days
+    rows = [(1, "A", "ORL", d.strftime("%Y-%m-%d"), 30)
+            for d in pd.date_range("2026-01-01", periods=10, freq="2D")]
+    rows += [(1, "A", "ORL", d, 30) for d in
+             ["2026-01-29", "2026-01-31", "2026-02-02", "2026-02-03"]]
+    games = make_games(rows)
+    daily = compute_daily_metrics(games)
+    row = get_day(daily, 1, "2026-02-03")
+    assert "surge after a quiet week" in row["reasons"]
+    assert row["state"] == "RED"
 
 
 # ---------------------------------------------------------------- schedule density
@@ -184,6 +241,7 @@ def test_reasons_name_the_contributing_rules():
     reasons = get_day(daily, 1, "2026-02-04")["reasons"]
     assert "back-to-back" in reasons
     assert "4 games in 7 days" in reasons
+    assert "vs prior week" in reasons
 
 
 # ---------------------------------------------------------------- table + series
@@ -215,4 +273,4 @@ def test_player_series_is_a_contiguous_daily_grid():
     series = player_series(daily, player_id=1)
     dates = series["date"]
     assert (dates.diff().dropna() == pd.Timedelta(days=1)).all()
-    assert {"minutes", "acute_7d", "chronic_daily", "acwr", "state"} <= set(series.columns)
+    assert {"minutes", "acute_7d", "chronic_daily", "ramp_pct", "state"} <= set(series.columns)

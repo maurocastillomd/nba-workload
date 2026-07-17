@@ -88,12 +88,12 @@ c4.metric("Players in view", len(table))
 # ---------------------------------------------------------------- league table
 display = table[[
     "player_name", "team", "state", "risk_points", "reasons",
-    "acute_7d", "games_7d", "chronic_daily", "acwr", "b2b",
+    "acute_7d", "ramp_pct", "games_7d", "chronic_daily", "b2b",
 ]].rename(columns={
     "player_name": "Player", "team": "Team", "state": "State",
     "risk_points": "Pts", "reasons": "Why",
-    "acute_7d": "Min, last 7d", "games_7d": "Games, 7d",
-    "chronic_daily": "28d min/day", "acwr": "ACWR", "b2b": "B2B",
+    "acute_7d": "Min, last 7d", "ramp_pct": "Vs prior wk",
+    "games_7d": "Games, 7d", "chronic_daily": "28d min/day", "b2b": "B2B",
 })
 
 
@@ -106,7 +106,7 @@ def paint_state(value):
 st.dataframe(
     display.style.map(paint_state, subset=["State"]).format({
         "Min, last 7d": "{:.0f}", "Games, 7d": "{:.0f}",
-        "28d min/day": "{:.1f}", "ACWR": "{:.2f}",
+        "28d min/day": "{:.1f}", "Vs prior wk": "{:+.0%}",
     }, na_rep="—"),
     width="stretch",
     height=430,
@@ -114,8 +114,9 @@ st.dataframe(
     column_config={
         "Why": st.column_config.TextColumn(width="large"),
         "B2B": st.column_config.CheckboxColumn(help="Played yesterday and today"),
-        "ACWR": st.column_config.NumberColumn(
-            help="Acute:chronic workload ratio (7d avg / 28d avg). Context, not a verdict."
+        "Vs prior wk": st.column_config.NumberColumn(
+            help="Change in 7-day minutes vs the 7 days before. "
+            "Blank when the prior week was too small to compare against."
         ),
     },
 )
@@ -143,9 +144,13 @@ with right:
         unsafe_allow_html=True,
     )
     st.metric("Risk points", int(today["risk_points"]))
-    st.metric("Minutes, last 7 days", f"{today['acute_7d']:.0f}")
+    st.metric(
+        "Minutes, last 7 days",
+        f"{today['acute_7d']:.0f}",
+        delta=None if pd.isna(today["ramp_pct"]) else f"{today['ramp_pct']:+.0%} vs prior wk",
+        delta_color="inverse",
+    )
     st.metric("28-day avg (min/day)", f"{today['chronic_daily']:.1f}")
-    st.metric("ACWR", "not rated" if pd.isna(today["acwr"]) else f"{today['acwr']:.2f}")
     if today["reasons"]:
         st.markdown("**Why this flag**")
         for reason in today["reasons"].split("; "):
@@ -257,15 +262,21 @@ with st.expander("Methods, thresholds, and honest limitations"):
 estimates a number; if a value is missing, it says "not rated."
 
 **Windows.** Acute load = trailing **{config.ACUTE_DAYS}-day** minutes.
-Chronic load = trailing **{config.CHRONIC_DAYS}-day** minutes averaged per day
-(fixed {config.CHRONIC_DAYS}-day denominator, off days count as zero).
-ACWR = (acute/{config.ACUTE_DAYS}) / chronic. When the chronic base is under
-**{config.CHRONIC_FLOOR_DAILY:.0f} min/day** the ratio is unstable and is not rated.
+Exposure base = trailing **{config.CHRONIC_DAYS}-day** minutes averaged per day
+(fixed {config.CHRONIC_DAYS}-day denominator, off days count as zero). A player
+under **{config.CHRONIC_FLOOR_DAILY:.0f} min/day** has no meaningful base.
 
 **Flag rules (points).**
-- ACWR ≥ {config.ACWR_RED}: **+2** · ACWR ≥ {config.ACWR_AMBER}: **+1**
-- Low-chronic ramp-up (≥ {config.LOW_CHRONIC_ACUTE_MIN:.0f} min in 7 days on an
-  unrated chronic base, e.g. returning from a layoff): **+2**
+- Week-over-week ramp: 7-day minutes up **≥ {config.RAMP_RED_PCT:.0%}** vs the
+  prior 7 days: **+2** · up **≥ {config.RAMP_AMBER_PCT:.0%}**: **+1**. A jump
+  only counts when this week is a real workload
+  (≥ {config.RAMP_MIN_ACUTE:.0f} min) and the increase clears
+  **{config.RAMP_MIN_DELTA:.0f} min** — an NBA calendar naturally swings by one
+  game a week, and one extra game is not a decision.
+- Surge after a quiet week (an established player goes from a near-zero week
+  to ≥ {config.RAMP_MIN_ACUTE:.0f} min): **+2**
+- Low-chronic ramp-up (≥ {config.LOW_CHRONIC_ACUTE_MIN:.0f} min in 7 days with
+  no meaningful {config.CHRONIC_DAYS}-day base, e.g. returning from a layoff): **+2**
 - {config.GAMES_7D_HIGH}+ games in 7 days: **+1** · Back-to-back: **+1**
 - A game in the last 7 days spiking above the player's own prior
   {config.CHRONIC_DAYS}-day baseline (z ≥ {config.MIN_Z_SPIKE}, minimum
@@ -273,11 +284,22 @@ ACWR = (acute/{config.ACUTE_DAYS}) / chronic. When the chronic base is under
 
 **RED ≥ {config.RED_POINTS} points · AMBER = {config.AMBER_POINTS} · GREEN otherwise.**
 
+**Why there is no ACWR here.** The acute:chronic workload ratio was the
+industry default for years. It did not survive scrutiny: the founding studies
+had methodological problems (Impellizzeri et al., 2020), the coupled ratio
+correlates with itself by construction (Lolli et al., 2019), and replications
+kept failing. A ratio also hides information a coach needs — an ACWR of 1.4
+can mean 40 extra minutes or 8. This tool uses the signals that held up
+instead: absolute week-over-week change (Cross et al., 2016), schedule
+density and back-to-backs (the NBA congestion literature: Teramoto 2017,
+Lewis 2018), and spikes referenced to each player's own baseline. Same
+inputs the ratio used, no ratio.
+
 **Limitations, stated plainly.** Public minutes are a proxy, not a load
 measurement: no practice load, no travel, no positional demands, no
-force-plate or GPS data. ACWR itself is debated in the literature; here it is
-one input among several, never a verdict. This is a monitoring lens for
-conversation-starting, not medical advice and not an injury prediction model.
+force-plate or GPS data. The first two weeks of a season read hot while
+baselines build. This is a monitoring lens that starts conversations, not
+medical advice and not an injury prediction model.
 """)
 
 st.caption(

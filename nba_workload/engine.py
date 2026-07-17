@@ -32,16 +32,22 @@ def _game_minutes_z(day_minutes: pd.Series) -> pd.Series:
 def _flag(df: pd.DataFrame) -> pd.DataFrame:
     """Point-based flag. Each rule is one published threshold in config."""
     rated = df["chronic_daily"] >= config.CHRONIC_FLOOR_DAILY
-    acwr_red = rated & (df["acwr"] >= config.ACWR_RED)
-    acwr_amber = rated & (df["acwr"] >= config.ACWR_AMBER) & ~acwr_red
+    heavy_week = df["acute_7d"] >= config.RAMP_MIN_ACUTE
+    real_jump = heavy_week & (
+        (df["acute_7d"] - df["prev_acute_7d"]) >= config.RAMP_MIN_DELTA
+    )
+    ramp_red = real_jump & (df["ramp_pct"] >= config.RAMP_RED_PCT)
+    ramp_amber = real_jump & (df["ramp_pct"] >= config.RAMP_AMBER_PCT) & ~ramp_red
+    quiet_surge = heavy_week & rated & (df["prev_acute_7d"] < config.RAMP_PRIOR_FLOOR)
     low_chronic = ~rated & (df["acute_7d"] >= config.LOW_CHRONIC_ACUTE_MIN)
     dense = df["games_7d"] >= config.GAMES_7D_HIGH
     b2b = df["b2b"]
     spike = df["spike_z_7d"] >= config.MIN_Z_SPIKE
 
     points = (
-        2 * acwr_red.astype(int)
-        + acwr_amber.astype(int)
+        2 * ramp_red.astype(int)
+        + ramp_amber.astype(int)
+        + 2 * quiet_surge.astype(int)
         + 2 * low_chronic.astype(int)
         + dense.astype(int)
         + b2b.astype(int)
@@ -51,10 +57,16 @@ def _flag(df: pd.DataFrame) -> pd.DataFrame:
     reasons = []
     for i in range(len(df)):
         r = []
-        if acwr_red.iat[i]:
-            r.append(f"ACWR {df['acwr'].iat[i]:.2f} ≥ {config.ACWR_RED}")
-        elif acwr_amber.iat[i]:
-            r.append(f"ACWR {df['acwr'].iat[i]:.2f} ≥ {config.ACWR_AMBER}")
+        if ramp_red.iat[i] or ramp_amber.iat[i]:
+            r.append(
+                f"minutes up {df['ramp_pct'].iat[i]:+.0%} vs prior week "
+                f"(from {df['prev_acute_7d'].iat[i]:.0f} to {df['acute_7d'].iat[i]:.0f} min)"
+            )
+        if quiet_surge.iat[i]:
+            r.append(
+                f"surge after a quiet week ({df['acute_7d'].iat[i]:.0f} min after "
+                f"{df['prev_acute_7d'].iat[i]:.0f})"
+            )
         if low_chronic.iat[i]:
             r.append(
                 f"low-chronic ramp-up ({df['acute_7d'].iat[i]:.0f} min this week on a minimal 28-day base)"
@@ -119,9 +131,12 @@ def compute_daily_metrics(
         df["games_7d"] = (
             played.astype(int).rolling(config.ACUTE_DAYS, min_periods=1).sum().values
         )
-        df["acwr"] = np.where(
-            df["chronic_daily"] >= config.CHRONIC_FLOOR_DAILY,
-            (df["acute_7d"] / config.ACUTE_DAYS) / df["chronic_daily"],
+        acute = pd.Series(df["acute_7d"].values)
+        prev_acute = acute.shift(config.ACUTE_DAYS)
+        df["prev_acute_7d"] = prev_acute.values
+        df["ramp_pct"] = np.where(
+            prev_acute >= config.RAMP_PRIOR_FLOOR,
+            (acute - prev_acute) / prev_acute,
             np.nan,
         )
         df["b2b"] = (played & played.shift(1, fill_value=False)).values
