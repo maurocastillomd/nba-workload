@@ -1,6 +1,6 @@
 # NBA Schedule Congestion & Workload Monitor
 
-**Live app: https://nba-workload-gpucpus6ihn5jpkukzukom.streamlit.app/**
+**Live app: https://nba-workload.streamlit.app**
 
 A live answer to one question every basketball performance staff asks weekly:
 **which players are entering a high-risk workload window right now?**
