@@ -304,5 +304,6 @@ medical advice and not an injury prediction model.
 
 st.caption(
     "Built by Mauro Castillo, MD, MS, CSCS · [maurocastillomd.com](https://maurocastillomd.com) · "
-    "engine and thresholds are open source; every number is covered by automated tests."
+    "engine and thresholds are [open source](https://github.com/maurocastillomd/nba-workload); "
+    "every number is covered by automated tests."
 )

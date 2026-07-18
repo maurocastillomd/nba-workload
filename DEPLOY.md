@@ -1,27 +1,20 @@
-# Deploy to Streamlit Community Cloud (free, ~5 minutes)
+# Deploy status
 
-The repo is deploy-ready: the app reads the committed data snapshot, so the
-cloud box never needs to reach stats.nba.com.
+**Done:**
+- Public repo live: https://github.com/maurocastillomd/nba-workload
+- `main` pushed; the app reads the committed data snapshot, so the cloud box
+  never needs to reach stats.nba.com.
 
-1. **Create the GitHub repo** (public — Community Cloud needs public repos on
-   the free tier):
-   ```bash
-   cd ~/nba-workload
-   git remote add origin https://github.com/<your-username>/nba-workload.git
-   git push -u origin main
-   ```
-   (Create the empty repo first at github.com/new — name it `nba-workload`,
-   no README, since we already have one.)
+**One step left (needs your browser, ~2 minutes):**
 
-2. **Connect Streamlit Cloud**: go to https://share.streamlit.io, sign in with
-   GitHub, click **Create app → Deploy a public app from GitHub**.
-   - Repository: `<your-username>/nba-workload`
+1. Go to https://share.streamlit.io and sign in **with GitHub**
+   (maurocastillomd).
+2. Click **Create app → Deploy a public app from GitHub**.
+   - Repository: `maurocastillomd/nba-workload`
    - Branch: `main`
    - Main file path: `app.py`
-   - App URL: pick something like `nba-workload-monitor`
-
-3. Click **Deploy**. First build takes 2–3 minutes. Done — the URL is public
-   and shareable.
+   - App URL: pick `nba-workload` (gives nba-workload.streamlit.app)
+3. Click **Deploy**. First build takes 2–3 minutes.
 
 ## Updating the data later
 
