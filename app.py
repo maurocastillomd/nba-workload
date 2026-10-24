@@ -2,7 +2,7 @@
 
 Real public box-score minutes -> deterministic trailing-window engine -> flags.
 Every number on this page comes from nba_workload/engine.py; the app only
-displays. Built by Mauro Castillo, MD, MS, CSCS.
+displays. Built by Mauro Castillo, MD, MS, CSCS, RSCC, CPSS.
 """
 import altair as alt
 import pandas as pd
@@ -303,7 +303,7 @@ medical advice and not an injury prediction model.
 """)
 
 st.caption(
-    "Built by Mauro Castillo, MD, MS, CSCS · [maurocastillomd.com](https://maurocastillomd.com) · "
+    "Built by Mauro Castillo, MD, MS, CSCS, RSCC, CPSS · [maurocastillomd.com](https://maurocastillomd.com) · "
     "engine and thresholds are [open source](https://github.com/maurocastillomd/nba-workload); "
     "every number is covered by automated tests."
 )

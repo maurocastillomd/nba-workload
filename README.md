@@ -102,5 +102,5 @@ prediction model.
 
 ---
 
-Built end-to-end by **Mauro Castillo, MD, MS, CSCS** —
+Built end-to-end by **Mauro Castillo, MD, MS, CSCS, RSCC, CPSS** —
 [maurocastillomd.com](https://maurocastillomd.com)
